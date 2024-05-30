@@ -1,0 +1,54 @@
+#include "UnityRayQuery.cginc"
+
+#pragma kernel CSMain
+#pragma kernel CSClear
+
+#pragma require inlineraytracing
+#pragma only_renderers d3d11 xboxseries ps5
+
+RWTexture2D<float4> Result;
+RaytracingAccelerationStructure AccelStruct;
+
+uint WangHash(inout uint seed)
+{
+    seed = (seed ^ 61) ^ (seed >> 16);
+    seed *= 9;
+    seed = seed ^ (seed >> 4);
+    seed *= 0x27d4eb2d;
+    seed = seed ^ (seed >> 15);
+    return seed;
+}
+
+[numthreads(8,8,1)]
+void CSClear (uint3 id : SV_DispatchThreadID)
+{
+    Result[id.xy] = 0;
+}
+[numthreads(8,8,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    const uint width = 512;
+    const uint height = 512;
+
+    const float3 origin = float3(0, 0, 0);
+
+    RayDesc Ray;
+    Ray.Origin = origin;
+    Ray.TMin = 0;
+    Ray.TMax = 1e20f;
+
+    UnityRayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> rayQuery;
+
+    float hit;
+    Ray.Direction.x = (float)id.x/width*2-1;
+    Ray.Direction.y = 1;
+    Ray.Direction.z = -(float)id.y/height*2 + 1;
+    Ray.Direction = normalize(Ray.Direction);
+    rayQuery.TraceRayInline(AccelStruct, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, 0xff, Ray);
+    rayQuery.Proceed();
+    hit = rayQuery.CommittedStatus() == COMMITTED_TRIANGLE_HIT;
+    
+    if (hit == 0) Result[id.xy] = 0;
+    else Result[id.xy] = 1;
+    //Result[id.xy] = float4(Ray.Direction, 1);
+}
